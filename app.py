@@ -43,10 +43,10 @@ HTML_PAGE = """
     <h2>Pool Data</h2>
 
     <form method="post">
-  <input type="text" name="client" placeholder="Client Name" required>
-  <input type="number" step="0.01" name="balance" placeholder="Previous Balance" required>
-  <button type="submit">Check Report</button>
-</form>
+        <input type="text" name="client" placeholder="Client Name" required>
+        <input type="number" step="0.01" name="balance" placeholder="Wallet Balance (USDT)" required>
+        <button type="submit">Check Report</button>
+    </form>
 
     {% if report %}
     <div class="report">
@@ -69,7 +69,6 @@ def home():
         client = request.form["client"]
         balance = float(request.form["balance"])
 
-        # Auto profit percentage based on balance
         if balance < 5000:
             profit_rate = 2
         elif balance <= 10000:
@@ -92,27 +91,6 @@ def home():
 
     return render_template_string(HTML_PAGE, report=False)
 
-earned = round(balance * profit_rate / 100, 2)
-new_balance = round(balance + earned, 2)
-
-       return render_template_string(
-    HTML_PAGE,
-    report=True,
-    client=client,
-    today=date.today(),
-    earned=earned,
-    new_balance=new_balance,
-    profit_rate=profit_rate
-)
-
-    return render_template_string(HTML_PAGE, report=False)
-
-import os
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-
