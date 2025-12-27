@@ -45,7 +45,6 @@ HTML_PAGE = """
     <form method="post">
         <input type="text" name="client" placeholder="Client Name" required>
         <input type="number" step="0.01" name="balance" placeholder="Previous Balance" required>
-        <input type="number" step="0.01" name="profit" placeholder="Daily Profit (%)" required>
         <button type="submit">Check Report</button>
     </form>
 
@@ -53,6 +52,7 @@ HTML_PAGE = """
     <div class="report">
         <p><b>Client:</b> {{ client }}</p>
         <p><b>Date:</b> {{ today }}</p>
+        <p><b>Daily Profit Rate:</b> {{ profit_rate }}%</p>
         <p><b>Profit Earned:</b> {{ earned }}</p>
         <p><b>New Balance:</b> {{ new_balance }}</p>
         <small>Note: Off-chain calculation, not on-chain verified.</small>
@@ -68,19 +68,26 @@ def home():
     if request.method == "POST":
         client = request.form["client"]
         balance = float(request.form["balance"])
-        profit = float(request.form["profit"])
+       # Auto profit percentage based on balance
+if balance < 5000:
+    profit_rate = 2
+elif balance <= 10000:
+    profit_rate = 2.5
+else:
+    profit_rate = 3
 
-        earned = round(balance * profit / 100, 2)
-        new_balance = round(balance + earned, 2)
+earned = round(balance * profit_rate / 100, 2)
+new_balance = round(balance + earned, 2)
 
-        return render_template_string(
-            HTML_PAGE,
-            report=True,
-            client=client,
-            today=date.today(),
-            earned=earned,
-            new_balance=new_balance
-        )
+       return render_template_string(
+    HTML_PAGE,
+    report=True,
+    client=client,
+    today=date.today(),
+    earned=earned,
+    new_balance=new_balance,
+    profit_rate=profit_rate
+)
 
     return render_template_string(HTML_PAGE, report=False)
 
@@ -89,4 +96,5 @@ import os
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
