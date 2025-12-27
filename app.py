@@ -99,8 +99,8 @@ HTML_PAGE = """
 
     <br>
     <small>
-        ⚠️ Profit shown is an estimation based on entered balance.<br>
-        This is not on-chain verification.
+        ⚠️ Profit shown is an estimation based on Wallet balance.<br>
+        Do not share your wallet passwords to any one.
     </small>
 
 </div>
@@ -148,4 +148,5 @@ def home():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
 
