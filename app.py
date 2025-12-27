@@ -68,13 +68,29 @@ def home():
     if request.method == "POST":
         client = request.form["client"]
         balance = float(request.form["balance"])
-       # Auto profit percentage based on balance
-if balance < 5000:
-    profit_rate = 2
-elif balance <= 10000:
-    profit_rate = 2.5
-else:
-    profit_rate = 3
+
+        # Auto profit percentage based on balance
+        if balance < 5000:
+            profit_rate = 2
+        elif balance <= 10000:
+            profit_rate = 2.5
+        else:
+            profit_rate = 3
+
+        earned = round(balance * profit_rate / 100, 2)
+        new_balance = round(balance + earned, 2)
+
+        return render_template_string(
+            HTML_PAGE,
+            report=True,
+            client=client,
+            today=date.today(),
+            earned=earned,
+            new_balance=new_balance,
+            profit_rate=profit_rate
+        )
+
+    return render_template_string(HTML_PAGE, report=False)
 
 earned = round(balance * profit_rate / 100, 2)
 new_balance = round(balance + earned, 2)
@@ -96,6 +112,7 @@ import os
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
