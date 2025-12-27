@@ -72,7 +72,7 @@ HTML_PAGE = """
          alt="Pool Data Logo">
 
     <h2>Pool Data</h2>
-    <p><small>Daily Profit Calculator (Demo)</small></p>
+    <p><small>Daily Profit Calculator (Minning Pool Data)</small></p>
 
     <form method="post">
         <input type="text" name="client" placeholder="Client Name" required>
@@ -148,3 +148,4 @@ def home():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
