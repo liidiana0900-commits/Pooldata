@@ -138,7 +138,7 @@ def home():
         CLIENT_WALLETS.setdefault(client, wallet)
 
         if balance <= 0:
-            return render_template_string(HTML_PAGE, error="Balance must be greater than 130")
+            return render_template_string(HTML_PAGE, error="Balance must be greater than 0")
 
         if balance < 5000:
             rate = 2
@@ -183,3 +183,4 @@ def admin():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
