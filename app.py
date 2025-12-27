@@ -8,57 +8,103 @@ HTML_PAGE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Pool Data</title>
+    <title>Pool Data - Profit Calculator</title>
     <style>
         body {
-            font-family: Arial;
-            background-color: #f2f2f2;
+            font-family: Arial, sans-serif;
+            background: #eef2f7;
             padding: 40px;
         }
         .box {
-            background: white;
-            padding: 20px;
+            background: #ffffff;
+            padding: 25px;
             max-width: 420px;
             margin: auto;
-            border-radius: 8px;
-        }
-        h2 {
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
             text-align: center;
+        }
+        img.profile {
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            margin-bottom: 15px;
         }
         input, button {
             width: 100%;
-            padding: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 15px;
+        }
+        button {
+            background: #2e7dff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #1b5fd6;
+        }
+        .error {
+            color: red;
             margin-top: 10px;
         }
         .report {
             margin-top: 20px;
-            background: #e8f5e9;
-            padding: 10px;
-            border-radius: 6px;
+            background: #f1f7ff;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: left;
+        }
+        small {
+            color: #666;
         }
     </style>
 </head>
 <body>
+
 <div class="box">
+
+    <!-- PROFILE / LOGO IMAGE -->
+    <img class="profile"
+         src="https://images.unsplash.com/photo-1642790106117-e829e14a8cbb?auto=format&fit=crop&w=300&q=80"
+         alt="Pool Data Logo">
+
     <h2>Pool Data</h2>
+    <p><small>Daily Profit Calculator (Demo)</small></p>
 
     <form method="post">
         <input type="text" name="client" placeholder="Client Name" required>
+        <input type="text" name="wallet" placeholder="Wallet Address" required>
         <input type="number" step="0.01" name="balance" placeholder="Wallet Balance (USDT)" required>
-        <button type="submit">Check Report</button>
+        <button type="submit">Check Profit</button>
     </form>
+
+    {% if error %}
+        <p class="error"><b>{{ error }}</b></p>
+    {% endif %}
 
     {% if report %}
     <div class="report">
-        <p><b>Client:</b> {{ client }}</p>
         <p><b>Date:</b> {{ today }}</p>
+        <p><b>Client:</b> {{ client }}</p>
+        <p><b>Wallet Address:</b> {{ wallet }}</p>
+        <p><b>Wallet Balance:</b> {{ balance }} USDT</p>
         <p><b>Daily Profit Rate:</b> {{ profit_rate }}%</p>
-        <p><b>Profit Earned:</b> {{ earned }}</p>
-        <p><b>New Balance:</b> {{ new_balance }}</p>
-        <small>Note: Off-chain calculation, not on-chain verified.</small>
+        <p><b>Daily Profit:</b> {{ earned }} USDT</p>
+        <p><b>New Balance:</b> {{ new_balance }} USDT</p>
     </div>
     {% endif %}
+
+    <br>
+    <small>
+        ⚠️ Profit shown is an estimation based on entered balance.<br>
+        This is not on-chain verification.
+    </small>
+
 </div>
+
 </body>
 </html>
 """
@@ -67,7 +113,14 @@ HTML_PAGE = """
 def home():
     if request.method == "POST":
         client = request.form["client"]
+        wallet = request.form["wallet"]
         balance = float(request.form["balance"])
+
+        if balance <= 0:
+            return render_template_string(
+                HTML_PAGE,
+                error="Please check your wallet balance. Balance cannot be 0."
+            )
 
         if balance < 5000:
             profit_rate = 2
@@ -83,14 +136,15 @@ def home():
             HTML_PAGE,
             report=True,
             client=client,
+            wallet=wallet,
             today=date.today(),
+            balance=balance,
+            profit_rate=profit_rate,
             earned=earned,
-            new_balance=new_balance,
-            profit_rate=profit_rate
+            new_balance=new_balance
         )
 
-    return render_template_string(HTML_PAGE, report=False)
+    return render_template_string(HTML_PAGE)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
