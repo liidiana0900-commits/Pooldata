@@ -43,10 +43,10 @@ HTML_PAGE = """
     <h2>Pool Data</h2>
 
     <form method="post">
-        <input type="text" name="client" placeholder="Client Name" required>
-        <input type="number" step="0.01" name="balance" placeholder="Previous Balance" required>
-        <button type="submit">Check Report</button>
-    </form>
+  <input type="text" name="client" placeholder="Client Name" required>
+  <input type="number" step="0.01" name="balance" placeholder="Previous Balance" required>
+  <button type="submit">Check Report</button>
+</form>
 
     {% if report %}
     <div class="report">
@@ -96,5 +96,6 @@ import os
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
