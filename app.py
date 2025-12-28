@@ -1,163 +1,159 @@
-from flask import Flask, request, render_template_string, redirect, url_for
-import re
-import datetime
-import os
+𝓝𝓪𝓲 🦢, [12/28/2025 12:45 PM]
+from flask import Flask, request, redirect, url_for, render_template_string
+import sqlite3
+from datetime import datetime, date
 
 app = Flask(__name__)
 
-# Simple in-memory wallet registry (demo)
-REGISTERED_WALLETS = {}
+DB = "database.db"
 
-# Admin password (change this)
-ADMIN_PASSWORD = "admin123"
+# ---------------- DATABASE ----------------
+def init_db():
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            wallet TEXT UNIQUE,
+            balance REAL,
+            profit REAL DEFAULT 0,
+            last_check TEXT,
+            ip TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-# Ethereum wallet regex
-ETH_WALLET_REGEX = re.compile(r"^0x[a-fA-F0-9]{40}$")
+init_db()
 
-VISITOR_LOG = "visitors.log"
-
-
-def log_visitor(wallet, ip):
-    with open(VISITOR_LOG, "a") as f:
-        f.write(f"{datetime.datetime.now()} | {wallet} | {ip}\n")
-
-
-HTML_TEMPLATE = """
+# ---------------- HTML ----------------
+HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Pooldata - Daily Profit</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-            background: url('/static/bg.png') no-repeat center center fixed;
-            background-size: cover;
-            font-family: Arial, sans-serif;
-            color: #fff;
-        }
-
-        .overlay {
-            background: rgba(0,0,0,0.7);
-            min-height: 100vh;
-            padding: 30px;
-        }
-
-        .box {
-            max-width: 420px;
-            margin: auto;
-            background: rgba(0,0,0,0.85);
-            padding: 25px;
-            border-radius: 10px;
-        }
-
-        input, button {
-            width: 100%;
-            padding: 12px;
-            margin-top: 10px;
-            border-radius: 5px;
-            border: none;
-        }
-
-        button {
-            background: orange;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .error {
-            color: red;
-            margin-top: 10px;
-        }
-
-        .success {
-            color: lightgreen;
-            margin-top: 10px;
-        }
-    </style>
+<title>Pool Profit Checker</title>
+<style>
+body {
+    background-image: url('/static/bg.png');
+    background-size: cover;
+    font-family: Arial;
+}
+.box {
+    background: rgba(0,0,0,0.7);
+    padding: 20px;
+    width: 350px;
+    margin: 100px auto;
+    color: white;
+    border-radius: 10px;
+}
+input, button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 10px;
+}
+.error { color: red; }
+.success { color: lightgreen; }
+</style>
 </head>
-
 <body>
-<div class="overlay">
-    <div class="box">
-        <h2>Daily Profit Checker</h2>
+<div class="box">
+<h2>Pool Profit Check</h2>
+<form method="POST">
+<input name="name" placeholder="Your Name" required>
+<input name="wallet" placeholder="ERC20 Wallet Address" required>
+<input name="balance" type="number" step="0.01" placeholder="USDT Balance" required>
+<button type="submit">Check Profit</button>
+</form>
 
-        <form method="POST">
-            <input type="text" name="wallet" placeholder="Enter ERC20 Wallet Address">
-            <button type="submit">Check Profit</button>
-        </form>
-
-        {% if error %}
-            <div class="error">{{ error }}</div>
-        {% endif %}
-
-        {% if profit %}
-            <div class="success">
-                <p><b>Wallet:</b> {{ wallet }}</p>
-                <p><b>Today's Profit:</b> {{ profit }} USDT</p>
-            </div>
-        {% endif %}
-    </div>
+{% if msg %}
+<p class="{{ cls }}">{{ msg }}</p>
+{% endif %}
 </div>
 </body>
 </html>
 """
 
-
+# ---------------- LOGIC ----------------
 @app.route("/", methods=["GET", "POST"])
-def index():
-    error = None
-    profit = None
-    wallet = None
+def home():
+    msg = ""
+    cls = ""
 
     if request.method == "POST":
-        wallet = request.form.get("wallet", "").strip()
+        name = request.form["name"].strip()
+        wallet = request.form["wallet"].strip()
+        balance = float(request.form["balance"])
+        ip = request.remote_addr
+        today = str(date.today())
 
-        if not wallet:
-            error = "Please provide a wallet address."
-        elif not ETH_WALLET_REGEX.match(wallet):
-            error = "Invalid wallet address format."
+        if not wallet.startswith("0x") or len(wallet) != 42:
+            msg = "Invalid wallet address. Please provide a valid ERC20 address."
+            cls = "error"
+            return render_template_string(HTML, msg=msg, cls=cls)
+
+        if balance <= 0:
+            msg = "Wallet balance is 0. Please check your wallet address."
+            cls = "error"
+            return render_template_string(HTML, msg=msg, cls=cls)
+
+        conn = sqlite3.connect(DB)
+        c = conn.cursor()
+        c.execute("SELECT profit, last_check FROM users WHERE wallet=?", (wallet,))
+        row = c.fetchone()
+
+        daily_rate = 0.02  # 2%
+
+        if row:
+            profit, last_check = row
+            if last_check != today:
+                profit += balance * daily_rate
+                c.execute("""
+                    UPDATE users
+                    SET profit=?, balance=?, last_check=?, ip=?
+                    WHERE wallet=?
+                """, (profit, balance, today, ip, wallet))
         else:
-            ip = request.remote_addr
-            log_visitor(wallet, ip)
+            profit = balance * daily_rate
+            c.execute("""
+                INSERT INTO users (name, wallet, balance, profit, last_check, ip)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (name, wallet, balance, profit, today, ip))
 
-            # Register wallet if first time
-            if ip not in REGISTERED_WALLETS:
-                REGISTERED_WALLETS[ip] = wallet
-            else:
-                if REGISTERED_WALLETS[ip] != wallet:
-                    error = "You must use the same wallet address as registered."
-                    return render_template_string(HTML_TEMPLATE, error=error)
+        conn.commit()
+        conn.close()
 
-            # Demo profit logic
-            profit = round((int(wallet[-4:], 16) % 500) / 10, 2)
+        msg = f"Your total profit: {profit:.2f} USDT<br>"
+        if profit < 30:
+            msg += "⚠ Your wallet balance is low. You must reach 30 USDT profit to withdraw."
+            cls = "error"
+        else:
+            msg += "✅ You are eligible for withdrawal."
+            cls = "success"
 
-    return render_template_string(
-        HTML_TEMPLATE,
-        error=error,
-        profit=profit,
-        wallet=wallet
-    )
+    return render_template_string(HTML, msg=msg, cls=cls)
 
-
+# ---------------- ADMIN PANEL ----------------
 @app.route("/admin")
 def admin():
-    password = request.args.get("password")
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("SELECT name, wallet, balance, profit, last_check, ip FROM users")
+    users = c.fetchall()
+    conn.close()
 
-    if password != ADMIN_PASSWORD:
-        return "Unauthorized", 401
+    return """
+    <h2>Admin Panel</h2>
+    <table border=1 cellpadding=5>
+    <tr>
+    <th>Name</th><th>Wallet</th><th>Balance</th>
+    <th>Profit</th><th>Last Check</th><th>IP</th>
+    </tr>
+    """ + "".join(
+f"<tr><td>{u[0]}</td><td>{u[1]}</td><td>{u[2]}</td><td>{u[3]:.2f}</td><td>{u[4]}</td><td>{u[5]}</td></tr>"
+        for u in users
+    ) + "</table>"
 
-    if not os.path.exists(VISITOR_LOG):
-        return "No visitors yet."
-
-    with open(VISITOR_LOG) as f:
-        logs = f.read().replace("\n", "<br>")
-
-    return f"<h2>Visitor Log</h2><hr>{logs}"
-
-
+# ---------------- RUN ----------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True)
