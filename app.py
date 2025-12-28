@@ -1,4 +1,4 @@
-𝓝𝓪𝓲 🦢, [12/28/2025 12:45 PM]
+
 from flask import Flask, request, redirect, url_for, render_template_string
 import sqlite3
 from datetime import datetime, date
@@ -157,3 +157,4 @@ f"<tr><td>{u[0]}</td><td>{u[1]}</td><td>{u[2]}</td><td>{u[3]:.2f}</td><td>{u[4]}
 # ---------------- RUN ----------------
 if __name__ == "__main__":
     app.run(debug=True)
+
