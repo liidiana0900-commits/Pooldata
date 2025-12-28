@@ -1,136 +1,95 @@
-from flask import Flask, request
-import sqlite3, time
+from flask import Flask, request, render_template_string
 
 app = Flask(__name__)
-DB = "pool.db"
 
-DAILY_RATE = 0.02
-ADMIN_PASSWORD = "admin123"
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mining Pool Data Calculator</title>
+    <style>
+        body { font-family: Arial; background:#f5f5f5; padding:40px; }
+        .box { background:#fff; padding:30px; max-width:600px; margin:auto; border-radius:8px; }
+        h1 { text-align:center; }
+        input { width:100%; padding:10px; margin:8px 0; }
+        button { padding:12px; width:100%; background:#007bff; color:white; border:none; font-size:16px; }
+        .result { margin-top:20px; background:#eef; padding:15px; border-radius:6px; }
+        footer { text-align:center; margin-top:30px; font-size:12px; color:#666; }
+    </style>
+</head>
+<body>
+<div class="box">
+    <h1>Mining Pool Data Calculator</h1>
 
-# ---------- DATABASE ----------
-def init_db():
-    conn = sqlite3.connect(DB)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            wallet TEXT PRIMARY KEY,
-            name TEXT,
-            nationality TEXT,
-            balance REAL,
-            start_time INTEGER
-        )
-    """)
-    conn.commit()
-    conn.close()
+    <form method="post">
+        <label>Hashrate (TH/s)</label>
+        <input type="number" step="any" name="hashrate" required>
 
-init_db()
+        <label>Power Usage (Watts)</label>
+        <input type="number" step="any" name="power" required>
 
-# ---------- PROFIT ----------
-def calculate_profit(balance, start_time):
-    seconds = time.time() - start_time
-    daily_profit = balance * DAILY_RATE
-    per_second = daily_profit / 86400
-    return round(seconds * per_second, 4)
+        <label>Electricity Cost ($/kWh)</label>
+        <input type="number" step="any" name="electricity" required>
 
-# ---------- HOME ----------
+        <label>Block Reward (Coins)</label>
+        <input type="number" step="any" name="reward" required>
+
+        <label>Coin Price ($)</label>
+        <input type="number" step="any" name="price" required>
+
+        <label>Pool Fee (%)</label>
+        <input type="number" step="any" name="fee" required>
+
+        <button type="submit">Calculate</button>
+    </form>
+
+    {% if result %}
+    <div class="result">
+        <h3>Results (Estimated)</h3>
+        <p><b>Daily Revenue:</b> ${{ result.revenue }}</p>
+        <p><b>Electricity Cost:</b> ${{ result.electricity_cost }}</p>
+        <p><b>Pool Fee:</b> ${{ result.pool_fee }}</p>
+        <p><b>Net Daily Profit:</b> ${{ result.profit }}</p>
+    </div>
+    {% endif %}
+</div>
+
+<footer>
+    This calculator is for educational and estimation purposes only.
+</footer>
+</body>
+</html>
+"""
+
 @app.route("/", methods=["GET", "POST"])
-def home():
-    result = ""
+def index():
+    result = None
 
     if request.method == "POST":
-        name = request.form["name"]
-        nationality = request.form["nationality"]
-        wallet = request.form["wallet"]
-        balance = float(request.form["balance"])
+        hashrate = float(request.form["hashrate"])
+        power = float(request.form["power"])
+        electricity = float(request.form["electricity"])
+        reward = float(request.form["reward"])
+        price = float(request.form["price"])
+        fee = float(request.form["fee"])
 
-        if not wallet.startswith("0x") or len(wallet) != 42:
-            result = "<p style='color:red'>Invalid wallet address</p>"
-        else:
-            conn = sqlite3.connect(DB)
-            c = conn.cursor()
-            c.execute("SELECT start_time FROM users WHERE wallet=?", (wallet,))
-            row = c.fetchone()
+        # Simplified estimation formula
+        daily_coins = hashrate * 0.00000001 * reward
+        revenue = daily_coins * price
 
-            if row:
-                start_time = row[0]
-            else:
-                start_time = int(time.time())
-                c.execute("""
-                    INSERT INTO users (wallet, name, nationality, balance, start_time)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (wallet, name, nationality, balance, start_time))
-                conn.commit()
+        electricity_cost = (power / 1000) * 24 * electricity
+        pool_fee = revenue * (fee / 100)
 
-            profit = calculate_profit(balance, start_time)
-            conn.close()
+        profit = revenue - electricity_cost - pool_fee
 
-            note = ""
-            if profit < 30:
-                note = "<p style='color:red'>⚠️ You must reach 30 USDT profit to withdraw.</p>"
+        result = {
+            "revenue": round(revenue, 2),
+            "electricity_cost": round(electricity_cost, 2),
+            "pool_fee": round(pool_fee, 2),
+            "profit": round(profit, 2)
+        }
 
-            result = f"""
-                <h3>Live Profit: {profit} USDT</h3>
-                {note}
-                <p style="font-size:12px;color:#777;">
-                Profit is calculated based on user-provided balance.
-                </p>
-            """
+    return render_template_string(HTML_TEMPLATE, result=result)
 
-    return f"""
-    <html>
-    <head>
-        <title>Pool Data</title>
-        <style>
-            body {{ font-family: Arial; background:#f4f4f4; }}
-            .box {{ width:420px; margin:60px auto; background:white; padding:20px; }}
-            input, select, button {{ width:100%; padding:10px; margin:6px 0; }}
-        </style>
-    </head>
-    <body>
-        <div class="box">
-            <h2>Pool Profit Checker</h2>
-            <form method="POST">
-                <input name="name" placeholder="Full Name" required>
-                <select name="nationality" required>
-                    <option value="">Select Nationality</option>
-                    <option>USA</option>
-                    <option>UK</option>
-                    <option>India</option>
-                    <option>Pakistan</option>
-                    <option>UAE</option>
-                    <option>Other</option>
-                </select>
-                <input name="wallet" placeholder="ERC20 Wallet Address" required>
-                <input name="balance" placeholder="USDT Balance" required>
-                <button>Check Profit</button>
-            </form>
-            {result}
-        </div>
-    </body>
-    </html>
-    """
-
-# ---------- ADMIN ----------
-@app.route("/admin")
-def admin():
-    if request.args.get("password") != ADMIN_PASSWORD:
-        return "Unauthorized"
-
-    conn = sqlite3.connect(DB)
-    c = conn.cursor()
-    c.execute("SELECT * FROM users")
-    users = c.fetchall()
-    conn.close()
-
-    html = "<h2>Admin Panel</h2><table border=1 cellpadding=6>"
-    html += "<tr><th>Name</th><th>Nationality</th><th>Wallet</th><th>Balance</th><th>Live Profit</th></tr>"
-
-    for u in users:
-        profit = calculate_profit(u[3], u[4])
-html += f"<tr><td>{u[1]}</td><td>{u[2]}</td><td>{u[0]}</td><td>{u[3]}</td><td>{profit}</td></tr>"
-
-    html += "</table>"
-    return html
-
-if __name__ == "__main__":
+if name == "__main__":
     app.run(debug=True)
