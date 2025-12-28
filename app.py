@@ -91,5 +91,6 @@ def index():
 
     return render_template_string(HTML_TEMPLATE, result=result)
 
-if name == "__main__":
+if __name__ == "__main__":
     app.run(debug=True)
+
