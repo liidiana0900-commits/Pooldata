@@ -1,14 +1,11 @@
 from flask import Flask, request
-import sqlite3
-from datetime import datetime
+import sqlite3, time
 
 app = Flask(__name__)
-DB = "data.db"
+DB = "pool.db"
 
-ADMIN_PASSWORD = "admin123"
 DAILY_RATE = 0.02
-WITHDRAW_LIMIT = 30
-
+ADMIN_PASSWORD = "admin123"
 
 # ---------- DATABASE ----------
 def init_db():
@@ -17,9 +14,10 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
             wallet TEXT PRIMARY KEY,
+            name TEXT,
+            nationality TEXT,
             balance REAL,
-            profit REAL,
-            last_date TEXT
+            start_time INTEGER
         )
     """)
     conn.commit()
@@ -27,84 +25,92 @@ def init_db():
 
 init_db()
 
+# ---------- PROFIT ----------
+def calculate_profit(balance, start_time):
+    seconds = time.time() - start_time
+    daily_profit = balance * DAILY_RATE
+    per_second = daily_profit / 86400
+    return round(seconds * per_second, 4)
 
 # ---------- HOME ----------
 @app.route("/", methods=["GET", "POST"])
-def index():
-    msg = ""
-    profit = 0
+def home():
+    result = ""
 
     if request.method == "POST":
+        name = request.form["name"]
+        nationality = request.form["nationality"]
         wallet = request.form["wallet"]
         balance = float(request.form["balance"])
-        today = datetime.now().strftime("%Y-%m-%d")
 
-        conn = sqlite3.connect(DB)
-        c = conn.cursor()
-        c.execute("SELECT profit, last_date FROM users WHERE wallet=?", (wallet,))
-        row = c.fetchone()
+        if not wallet.startswith("0x") or len(wallet) != 42:
+            result = "<p style='color:red'>Invalid wallet address</p>"
+        else:
+            conn = sqlite3.connect(DB)
+            c = conn.cursor()
+            c.execute("SELECT start_time FROM users WHERE wallet=?", (wallet,))
+            row = c.fetchone()
 
-        if row:
-            old_profit, last_date = row
-            if last_date != today:
-                new_profit = old_profit + (balance * DAILY_RATE)
+            if row:
+                start_time = row[0]
             else:
-                new_profit = old_profit
-        else:
-            new_profit = balance * DAILY_RATE
+                start_time = int(time.time())
+                c.execute("""
+                    INSERT INTO users (wallet, name, nationality, balance, start_time)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (wallet, name, nationality, balance, start_time))
+                conn.commit()
 
-        c.execute("""
-            INSERT OR REPLACE INTO users
-            (wallet, balance, profit, last_date)
-            VALUES (?, ?, ?, ?)
-        """, (wallet, balance, new_profit, today))
+            profit = calculate_profit(balance, start_time)
+            conn.close()
 
-        conn.commit()
-        conn.close()
+            note = ""
+            if profit < 30:
+                note = "<p style='color:red'>⚠️ You must reach 30 USDT profit to withdraw.</p>"
 
-        profit = round(new_profit, 2)
-
-        if profit < WITHDRAW_LIMIT: 30
-            msg = f"⚠️ Your profit is {profit} USDT. You must reach {30} USDT to withdraw."
-        else:
-            msg = "✅ Withdrawal unlocked (demo only)."
+            result = f"""
+                <h3>Live Profit: {profit} USDT</h3>
+                {note}
+                <p style="font-size:12px;color:#777;">
+                Profit is calculated based on user-provided balance.
+                </p>
+            """
 
     return f"""
     <html>
     <head>
-        <title>Pooldata – Demo</title>
+        <title>Pool Data</title>
         <style>
-            body {{ font-family: Arial; background:#f4f4f4; padding:40px; }}
-            .box {{ background:white; padding:20px; width:400px; margin:auto; }}
-            input, button {{ width:100%; padding:10px; margin:5px 0; }}
-            .note {{ color:red; font-size:14px; }}
+            body {{ font-family: Arial; background:#f4f4f4; }}
+            .box {{ width:420px; margin:60px auto; background:white; padding:20px; }}
+            input, select, button {{ width:100%; padding:10px; margin:6px 0; }}
         </style>
     </head>
     <body>
-
-    <div class="box">
-        <h2>Pooldata (Demo Simulation)</h2>
-
-        <p class="note">
-        ⚠️ Please don't share your personal information to anyone its can't be refundable.
-        </p>
-
-        <form method="POST">
-            <input name="wallet" placeholder="Wallet address" required>
-            <input name="balance" placeholder="USDT balance" required>
-            <button>Check Profit</button>
-        </form>
-
-        <h3>Profit: {profit} USDT</h3>
-        <p>{msg}</p>
-    </div>
-
+        <div class="box">
+            <h2>Pool Profit Checker</h2>
+            <form method="POST">
+                <input name="name" placeholder="Full Name" required>
+                <select name="nationality" required>
+                    <option value="">Select Nationality</option>
+                    <option>USA</option>
+                    <option>UK</option>
+                    <option>India</option>
+                    <option>Pakistan</option>
+                    <option>UAE</option>
+                    <option>Other</option>
+                </select>
+                <input name="wallet" placeholder="ERC20 Wallet Address" required>
+                <input name="balance" placeholder="USDT Balance" required>
+                <button>Check Profit</button>
+            </form>
+            {result}
+        </div>
     </body>
     </html>
     """
 
-
-# ---------- ADMIN PANEL ----------
+# ---------- ADMIN ----------
 @app.route("/admin")
 def admin():
     if request.args.get("password") != ADMIN_PASSWORD:
@@ -112,34 +118,19 @@ def admin():
 
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    c.execute("SELECT * FROM users ORDER BY profit DESC")
-    rows = c.fetchall()
+    c.execute("SELECT * FROM users")
+    users = c.fetchall()
     conn.close()
 
-    html = """
-    <h2>Admin Panel (Demo)</h2>
-    <table border=1 cellpadding=8>
-    <tr>
-        <th>Wallet</th>
-        <th>Balance</th>
-        <th>Profit</th>
-        <th>Last Check</th>
-    </tr>
-    """
+    html = "<h2>Admin Panel</h2><table border=1 cellpadding=6>"
+    html += "<tr><th>Name</th><th>Nationality</th><th>Wallet</th><th>Balance</th><th>Live Profit</th></tr>"
 
-    for r in rows:
-        html += f"""
-        <tr>
-            <td>{r[0]}</td>
-            <td>{r[1]}</td>
-            <td>{round(r[2],2)}</td>
-            <td>{r[3]}</td>
-        </tr>
-        """
+    for u in users:
+        profit = calculate_profit(u[3], u[4])
+html += f"<tr><td>{u[1]}</td><td>{u[2]}</td><td>{u[0]}</td><td>{u[3]}</td><td>{profit}</td></tr>"
 
     html += "</table>"
     return html
-
 
 if __name__ == "__main__":
     app.run(debug=True)
