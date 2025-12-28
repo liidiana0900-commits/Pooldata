@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string, redirect, url_for
+from flask import Flask, request, render_template_string
 import re
 import datetime
 import os
@@ -17,9 +17,11 @@ ETH_WALLET_REGEX = re.compile(r"^0x[a-fA-F0-9]{40}$")
 VISITOR_LOG = "visitors.log"
 
 
-def log_visitor(wallet, ip):
+def log_visitor(wallet, name, nationality, ip):
     with open(VISITOR_LOG, "a") as f:
-        f.write(f"{datetime.datetime.now()} | {wallet} | {ip}\n")
+        f.write(
+            f"{datetime.datetime.now()} | {wallet} | {name} | {nationality} | {ip}\n"
+        )
 
 
 HTML_TEMPLATE = """
@@ -28,7 +30,6 @@ HTML_TEMPLATE = """
 <head>
     <title>Pooldata - Daily Profit</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
     <style>
         body {
             margin: 0;
@@ -39,13 +40,11 @@ HTML_TEMPLATE = """
             font-family: Arial, sans-serif;
             color: #fff;
         }
-
         .overlay {
             background: rgba(0,0,0,0.7);
             min-height: 100vh;
             padding: 30px;
         }
-
         .box {
             max-width: 420px;
             margin: auto;
@@ -53,7 +52,6 @@ HTML_TEMPLATE = """
             padding: 25px;
             border-radius: 10px;
         }
-
         input, button {
             width: 100%;
             padding: 12px;
@@ -61,18 +59,15 @@ HTML_TEMPLATE = """
             border-radius: 5px;
             border: none;
         }
-
         button {
             background: orange;
             font-weight: bold;
             cursor: pointer;
         }
-
         .error {
             color: red;
             margin-top: 10px;
         }
-
         .success {
             color: lightgreen;
             margin-top: 10px;
@@ -86,6 +81,8 @@ HTML_TEMPLATE = """
         <h2>Daily Profit Checker</h2>
 
         <form method="POST">
+            <input type="text" name="name" placeholder="Full Name">
+            <input type="text" name="nationality" placeholder="Nationality">
             <input type="text" name="wallet" placeholder="Enter ERC20 Wallet Address">
             <button type="submit">Check Profit</button>
         </form>
@@ -96,6 +93,8 @@ HTML_TEMPLATE = """
 
         {% if profit %}
             <div class="success">
+                <p><b>Name:</b> {{ name }}</p>
+                <p><b>Nationality:</b> {{ nationality }}</p>
                 <p><b>Wallet:</b> {{ wallet }}</p>
                 <p><b>Today's Profit:</b> {{ profit }} USDT</p>
             </div>
@@ -112,25 +111,34 @@ def index():
     error = None
     profit = None
     wallet = None
+    name = None
+    nationality = None
 
     if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        nationality = request.form.get("nationality", "").strip()
         wallet = request.form.get("wallet", "").strip()
 
-        if not wallet:
-            error = "Please provide a wallet address."
+        if not name or not nationality or not wallet:
+            error = "All fields are required."
         elif not ETH_WALLET_REGEX.match(wallet):
             error = "Invalid wallet address format."
         else:
             ip = request.remote_addr
-            log_visitor(wallet, ip)
 
-            # Register wallet if first time
+            # Register wallet per IP
             if ip not in REGISTERED_WALLETS:
-                REGISTERED_WALLETS[ip] = wallet
+                REGISTERED_WALLETS[ip] = {
+                    "wallet": wallet,
+                    "name": name,
+                    "nationality": nationality
+                }
             else:
-                if REGISTERED_WALLETS[ip] != wallet:
+                if REGISTERED_WALLETS[ip]["wallet"] != wallet:
                     error = "You must use the same wallet address as registered."
                     return render_template_string(HTML_TEMPLATE, error=error)
+
+            log_visitor(wallet, name, nationality, ip)
 
             # Demo profit logic
             profit = round((int(wallet[-4:], 16) % 500) / 10, 2)
@@ -139,7 +147,9 @@ def index():
         HTML_TEMPLATE,
         error=error,
         profit=profit,
-        wallet=wallet
+        wallet=wallet,
+        name=name,
+        nationality=nationality
     )
 
 
